@@ -1,0 +1,8 @@
+utils/
+.vscode/
+.idea
+local.properties
+send_request.py
+app/build
+app/release
+.gradle
