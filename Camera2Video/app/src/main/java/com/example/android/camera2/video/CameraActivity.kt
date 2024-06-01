@@ -16,6 +16,9 @@
 
 package com.example.android.camera2.video
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -25,10 +28,19 @@ class CameraActivity : AppCompatActivity() {
 
     private lateinit var activityCameraBinding: ActivityCameraBinding
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
         activityCameraBinding = ActivityCameraBinding.inflate(layoutInflater)
         setContentView(activityCameraBinding.root)
+    }
+
+    private fun isConnected(): Boolean {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networkInfo: NetworkInfo? = connectivityManager.activeNetworkInfo
+        return networkInfo != null && networkInfo.isConnected
     }
 
     override fun onResume() {
@@ -49,7 +61,6 @@ class CameraActivity : AppCompatActivity() {
                         View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
         /** Milliseconds used for UI animations */
-        const val ANIMATION_FAST_MILLIS = 50L
         const val ANIMATION_SLOW_MILLIS = 100L
         private const val IMMERSIVE_FLAG_TIMEOUT = 500L
     }

@@ -17,20 +17,14 @@
 package com.example.android.camera2.video.fragments
 
 import android.annotation.SuppressLint
-import android.content.Context
-import android.hardware.camera2.params.DynamicRangeProfiles
 import android.os.Bundle
-import android.util.Size
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.navigation.Navigation
 import androidx.navigation.fragment.navArgs
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.android.camera.utils.GenericListAdapter
 import com.example.android.camera2.video.R
 
 /**
@@ -44,50 +38,21 @@ class EncodeApiFragment : Fragment() {
             inflater: LayoutInflater,
             container: ViewGroup?,
             savedInstanceState: Bundle?
-    ): View? = RecyclerView(requireContext())
+    ): View = RecyclerView(requireContext())
 
     @SuppressLint("MissingPermission")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         view as RecyclerView
         view.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            val modeList = enumerateModes(args.dynamicRange)
-            val layoutId = android.R.layout.simple_list_item_1
-            adapter = GenericListAdapter(modeList, itemLayoutId = layoutId) { view, item, _ ->
-                view.findViewById<TextView>(android.R.id.text1).text = item.name
-                view.setOnClickListener {
-                    navigate(item.value)
-                }
-            }
-        }
-    }
-
-    private fun navigate(useMediaRecorder: Boolean) {
-        val navController =
+            val navController =
                 Navigation.findNavController(requireActivity(), R.id.fragment_container)
 
-        navController.navigate(
+            navController.navigate(
                 EncodeApiFragmentDirections.actionEncodeApiToVideoCodec(
-                args.cameraId, args.width, args.height, args.fps,
-                args.dynamicRange, args.colorSpace, args.previewStabilization, useMediaRecorder))
-    }
+                    args.cameraId, args.width, args.height, args.fps,
+                    args.dynamicRange, args.colorSpace, args.previewStabilization, true))
 
-    companion object {
-        private data class ApiInfo(
-                val name: String,
-                val value: Boolean)
-
-        @SuppressLint("InlinedApi")
-        private fun enumerateModes(dynamicRange: Long): List<ApiInfo> {
-            val modeList: MutableList<ApiInfo> = mutableListOf()
-
-            modeList.add(ApiInfo("MediaCodec", false))
-            if (dynamicRange == DynamicRangeProfiles.STANDARD) {
-                modeList.add(ApiInfo("MediaRecorder", true))
-            }
-
-            return modeList
         }
     }
 }

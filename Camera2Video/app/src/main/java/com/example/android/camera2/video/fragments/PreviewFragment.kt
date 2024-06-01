@@ -18,7 +18,6 @@ package com.example.android.camera2.video.fragments
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.ColorSpace
 import android.hardware.camera2.CameraCaptureSession
@@ -32,8 +31,10 @@ import android.hardware.camera2.params.DynamicRangeProfiles
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.MediaScannerConnection
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.ConditionVariable
+import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -44,26 +45,28 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.MimeTypeMap
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.Navigation
 import androidx.navigation.fragment.navArgs
 import com.example.android.camera.utils.getPreviewOutputSize
-import com.example.android.camera2.video.BuildConfig
 import com.example.android.camera2.video.CameraActivity
 import com.example.android.camera2.video.EncoderWrapper
 import com.example.android.camera2.video.R
 import com.example.android.camera2.video.databinding.FragmentPreviewBinding
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.DataInputStream
 import java.io.File
+import java.net.ServerSocket
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,6 +76,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
+
 class PreviewFragment : Fragment() {
 
     private class HandlerExecutor(handler: Handler) : Executor {
@@ -80,7 +84,7 @@ class PreviewFragment : Fragment() {
 
         override fun execute(command: Runnable) {
             if (!mHandler.post(command)) {
-                throw RejectedExecutionException("" + mHandler + " is shutting down");
+                throw RejectedExecutionException("" + mHandler + " is shutting down")
             }
         }
     }
@@ -223,6 +227,9 @@ class PreviewFragment : Fragment() {
         })
     }
 
+    private var ipAddressTextView: TextView? = null
+    private var statusTextView: TextView? = null
+
     private fun isCurrentlyRecording(): Boolean {
         return recordingStarted && !recordingComplete
     }
@@ -244,6 +251,9 @@ class PreviewFragment : Fragment() {
                 args.dynamicRange, orientationHint, outputFile, args.useMediaRecorder,
                 args.videoCodec)
     }
+
+    private var job: Job? = null
+    private var serverSocket: ServerSocket? = null
 
     /**
      * Begin all camera operations in a coroutine in the main thread. This function:
@@ -272,7 +282,34 @@ class PreviewFragment : Fragment() {
             session.setRepeatingRequest(previewRequest!!, null, cameraHandler)
         }
 
-        // React to user touching the capture button
+        ipAddressTextView = view?.findViewById(R.id.ip_address_text_view)
+        statusTextView = view?.findViewById(R.id.status_text_view)
+        val wifiManager = view?.context?.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val ipAddress = wifiManager.connectionInfo.ipAddress
+        val formattedIpAddress = String.format(
+            "%d.%d.%d.%d",
+            (ipAddress and 0xff),
+            (ipAddress shr 8 and 0xff),
+            (ipAddress shr 16 and 0xff),
+            (ipAddress shr 24 and 0xff)
+        )
+        ipAddressTextView?.text = "IP Address: $formattedIpAddress"
+        statusTextView?.text = "Port: 3000"
+
+        job = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                serverSocket = ServerSocket(3000)
+                while (true) {
+                    val clientSocket = serverSocket?.accept()
+                    if (clientSocket != null) {
+                        handleClientConnection(clientSocket)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         fragmentBinding.captureButton.setOnTouchListener { view, event ->
             when (event.action) {
 
@@ -324,6 +361,7 @@ class PreviewFragment : Fragment() {
                                                 R.drawable.ic_shutter_pressed)
                                     }
                             fragmentBinding.captureTimer?.visibility = View.VISIBLE
+                            fragmentBinding.captureTimer?.stop()
                             fragmentBinding.captureTimer?.start()
                         }
                     }
@@ -337,7 +375,6 @@ class PreviewFragment : Fragment() {
 
                     session.stopRepeating()
                     session.close()
-
                     pipeline.clearFrameListener()
                     fragmentBinding.captureButton.setOnTouchListener(null)
 
@@ -378,7 +415,7 @@ class PreviewFragment : Fragment() {
 
                         if (outputFile.exists()) {
                             // Launch external activity via intent to play video recorded using our provider
-                            startActivity(Intent().apply {
+                            /*startActivity(Intent().apply {
                                 action = Intent.ACTION_VIEW
                                 type = MimeTypeMap.getSingleton()
                                         .getMimeTypeFromExtension(outputFile.extension)
@@ -386,7 +423,7 @@ class PreviewFragment : Fragment() {
                                 data = FileProvider.getUriForFile(view.context, authority, outputFile)
                                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                                         Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            })
+                            })*/
                         } else {
                             // TODO: 
                             //  1. Move the callback to ACTION_DOWN, activating it on the second press
@@ -409,6 +446,152 @@ class PreviewFragment : Fragment() {
             }
 
             true
+        }
+
+    }
+
+    private suspend fun handleClientConnection(clientSocket: java.net.Socket) {
+        try {
+            val inputStream = DataInputStream(clientSocket.getInputStream())
+            while (true) {
+                val inputByte = inputStream.readByte()
+                when (inputByte) {
+                    0.toByte() -> {
+                        cvRecordingStarted.block()
+
+                        /* Wait for at least one frame to process so we don't have an empty video */
+                        encoder.waitForFirstFrame()
+
+                        session.stopRepeating()
+                        session.close()
+                        pipeline.clearFrameListener()
+                        fragmentBinding.captureButton.setOnTouchListener(null)
+
+                        // Set color to GRAY and hide timer when recording stops
+                        fragmentBinding.captureButton.post {
+                            fragmentBinding.captureButton.background =
+                                context?.let {
+                                    ContextCompat.getDrawable(it,
+                                        R.drawable.ic_shutter_normal)
+                                }
+                            fragmentBinding.captureTimer?.visibility = View.GONE
+                            fragmentBinding.captureTimer?.stop()
+                        }
+
+                        /* Wait until the session signals onReady */
+                        cvRecordingComplete.block()
+
+                        // Unlocks screen rotation after recording finished
+                        requireActivity().requestedOrientation =
+                            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+                        // Requires recording of at least MIN_REQUIRED_RECORDING_TIME_MILLIS
+                        val elapsedTimeMillis = System.currentTimeMillis() - recordingStartMillis
+                        if (elapsedTimeMillis < MIN_REQUIRED_RECORDING_TIME_MILLIS) {
+                            delay(MIN_REQUIRED_RECORDING_TIME_MILLIS - elapsedTimeMillis)
+                        }
+
+                        delay(CameraActivity.ANIMATION_SLOW_MILLIS)
+
+                        pipeline.cleanup()
+
+                        Log.d(TAG, "Recording stopped. Output file: $outputFile")
+
+                        if (encoder.shutdown()) {
+                            // Broadcasts the media file to the rest of the system
+                            MediaScannerConnection.scanFile(
+                                requireView().context, arrayOf(outputFile.absolutePath), null, null)
+
+                            if (outputFile.exists()) {
+                                // Launch external activity via intent to play video recorded using our provider
+                                /*startActivity(Intent().apply {
+                                    action = Intent.ACTION_VIEW
+                                    type = MimeTypeMap.getSingleton()
+                                        .getMimeTypeFromExtension(outputFile.extension)
+                                    val authority = "${BuildConfig.APPLICATION_ID}.provider"
+                                    data = view?.let { FileProvider.getUriForFile(it.context, authority, outputFile) }
+                                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                })*/
+                            } else {
+                                // TODO:
+                                //  1. Move the callback to ACTION_DOWN, activating it on the second press
+                                //  2. Add an animation to the button before the user can press it again
+                                Handler(Looper.getMainLooper()).post {
+                                    Toast.makeText(activity, R.string.error_file_not_found,
+                                        Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } else {
+                            Handler(Looper.getMainLooper()).post {
+                                Toast.makeText(activity, R.string.recorder_shutdown_error,
+                                    Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        Handler(Looper.getMainLooper()).post {
+                            navController.popBackStack()
+                        }
+                    }
+                    1.toByte() -> {
+                        if (!recordingStarted) {
+                            // Prevents screen rotation during the video recording
+                            requireActivity().requestedOrientation =
+                                ActivityInfo.SCREEN_ORIENTATION_LOCKED
+
+                            pipeline.actionDown(encoderSurface)
+
+                            // Finalizes encoder setup and starts recording
+                            recordingStarted = true
+                            encoder.start()
+                            cvRecordingStarted.open()
+                            pipeline.startRecording()
+
+                            // Start recording repeating requests, which will stop the ongoing preview
+                            //  repeating requests without having to explicitly call
+                            //  `session.stopRepeating`
+                            if (previewRequest != null) {
+                                val recordTargets = pipeline.getRecordTargets()
+
+                                session.close()
+                                session = createCaptureSession(camera, recordTargets, cameraHandler,
+                                    recordingCompleteOnClose = true)
+
+                                session.setRepeatingRequest(recordRequest,
+                                    object : CameraCaptureSession.CaptureCallback() {
+                                        override fun onCaptureCompleted(session: CameraCaptureSession,
+                                                                        request: CaptureRequest,
+                                                                        result: TotalCaptureResult) {
+                                            if (isCurrentlyRecording()) {
+                                                encoder.frameAvailable()
+                                            }
+                                        }
+                                    }, cameraHandler)
+                            }
+
+                            recordingStartMillis = System.currentTimeMillis()
+                            Log.d(TAG, "Recording started")
+
+                            // Set color to RED and show timer when recording begins
+                            fragmentBinding.captureButton.post {
+                                fragmentBinding.captureButton.background =
+                                    context?.let {
+                                        ContextCompat.getDrawable(it,
+                                            R.drawable.ic_shutter_pressed)
+                                    }
+                                fragmentBinding.captureTimer?.visibility = View.VISIBLE
+                                fragmentBinding.captureTimer?.start()
+                            }
+                        }
+                    }
+                    else -> {
+                        // Unexpected byte value
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            clientSocket.close()
         }
     }
 
@@ -524,6 +707,8 @@ class PreviewFragment : Fragment() {
         pipeline.cleanup()
         cameraThread.quitSafely()
         encoderSurface.release()
+        job?.cancel()
+        serverSocket?.close()
     }
 
     override fun onDestroyView() {
@@ -540,7 +725,7 @@ class PreviewFragment : Fragment() {
         /** Creates a [File] named with the current date and time */
         private fun createFile(context: Context, extension: String): File {
             val sdf = SimpleDateFormat("yyyy_MM_dd_HH_mm_ss_SSS", Locale.US)
-            return File(context.filesDir, "VID_${sdf.format(Date())}.$extension")
+            return File( Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "MV_Brain_Battle_${sdf.format(Date())}.$extension")
         }
     }
 }
