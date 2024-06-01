@@ -1,10 +1,12 @@
 
-Android Camera2Video Sample
+Android RemoteCamera2Video
 ===========================
 
 This sample captures video record via the Camera2 API including displaying
 a camera preview and capturing a high-speed (slow motion) video using
 repeating capture requests.
+
+On top of that it hosts a server that accepts connection within a network.
 
 Introduction
 ------------
@@ -15,17 +17,9 @@ sending repeating capture requests from the camera framework to a
 
 This sample displays a live camera preview, allows the user to
 press and hold the screen to record a video, and also encodes the recording
-in an MP4 video file. The user has the following choices:
+in an MP4 video file.
 
-1) The dimensions and frame rate of the video
-2) Which camera to use
-3) Whether to capture in HDR format or SDR format
-4) Whether to capture using two streams directly to a SurfaceView, or one stream to an EGL pipeline
-5) Whether to apply a portrait filter in TextureView mode
-6) Whether to apply preview stabilization
-7) In single-stream mode with HDR, whether to use linear or PQ preview
-
-The choice to use HDR will be presented if the capability is detected on the host device.
+To create make the app more simple, the filters, slow motion and other functionality were removed.
 
 [1]: https://developer.android.com/reference/android/hardware/camera2/package-summary.html
 [2]: https://developer.android.com/reference/android/media/MediaRecorder
@@ -41,6 +35,9 @@ Screenshots
 -------------
 
 <img src="screenshots/main.png" height="400" alt="Screenshot"/>
+<img src="screenshots/ip-tree.png" height="400" alt="Screenshot"/>
+
+
 
 Getting Started
 ---------------
