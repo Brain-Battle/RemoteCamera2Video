@@ -35,7 +35,8 @@ Screenshots
 -------------
 
 <img src="screenshots/main.png" height="400" alt="Screenshot"/>
-<img src="screenshots/ip-tree.png" height="400" alt="Screenshot"/>
+
+<img src="screenshots/ip-tree.jpg" height="400" alt="Screenshot"/>
 
 
 
