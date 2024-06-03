@@ -284,7 +284,7 @@ class PreviewFragment : Fragment() {
 
         ipAddressTextView = view?.findViewById(R.id.ip_address_text_view)
         statusTextView = view?.findViewById(R.id.status_text_view)
-        val wifiManager = view?.context?.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wifiManager = view?.context?.getApplicationContext()?.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val ipAddress = wifiManager.connectionInfo.ipAddress
         val formattedIpAddress = String.format(
             "%d.%d.%d.%d",
@@ -301,6 +301,15 @@ class PreviewFragment : Fragment() {
                 serverSocket = ServerSocket(3000)
                 while (true) {
                     val clientSocket = serverSocket?.accept()
+
+                    requireActivity().requestedOrientation =
+                        ActivityInfo.SCREEN_ORIENTATION_LOCKED
+
+                    pipeline.actionDown(encoderSurface)
+
+                    // Finalizes encoder setup and starts recording
+                    encoder.start()
+                    cvRecordingStarted.open()
                     if (clientSocket != null) {
                         handleClientConnection(clientSocket)
                     }
@@ -535,15 +544,7 @@ class PreviewFragment : Fragment() {
                     1.toByte() -> {
                         if (!recordingStarted) {
                             // Prevents screen rotation during the video recording
-                            requireActivity().requestedOrientation =
-                                ActivityInfo.SCREEN_ORIENTATION_LOCKED
-
-                            pipeline.actionDown(encoderSurface)
-
-                            // Finalizes encoder setup and starts recording
                             recordingStarted = true
-                            encoder.start()
-                            cvRecordingStarted.open()
                             pipeline.startRecording()
 
                             // Start recording repeating requests, which will stop the ongoing preview
